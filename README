@@ -1,3 +1,144 @@
 Command-line Python-based trading application for trading Bitcoins for other
 currencies. Supports MtGox and TradeHill exchangers. It can generate simple
 charts.
+
+Config file is in INI-like format. There is a global section at the top,
+followed by configuration "profiles". Program is invoked with the profile name
+as the first argument. The configuration that is loaded is the global section,
+plus any additions/overrides in the profile section.
+
+If more command-line arguments are given, the program will execute them as a
+command and then exit, without prompting the user for anything.
+
+
+CONFIGURATION OPTIONS
+=====================
+
+default
+	The default currency pair.  First is the "asset" and second is the
+	"currency".  Prices appear as currency/asset.  (example: BTC USD)
+
+digest
+	The digest of the server's SSL certificate in the usual hexadecimal
+	FF:FF:FF:FF format.  The program requires that a digest is given.
+	Otherwise it won't connect.  It will fail if the server presents a
+	certificate with a different digest.
+digest.type
+	The type of the digest.  (default: "sha1")
+
+class
+	MtGox or TradeHill.  Must be specified.
+host
+	Hostname of server to connect to.  (default is class-specific)
+port
+	Port to connect to.  (default: 443)
+username
+password
+apitoken
+	Credentials to give to server.
+
+proxy.host
+proxy.port
+proxy.type
+	Proxy to use to connect to server.  Type can be "socks4a" or "http".
+
+websocket
+	Whether to connect to MtGox's websocket interface.  (default is off)
+websocket.proxy.host
+websocket.proxy.port
+websocket.proxy.type
+	Proxy to use for the websocket.  Defaults to the above proxy setting.
+
+websocket.initdelay
+	Delay in seconds before websocket thread attempts to connect (so we
+	avoid connects).
+
+
+websocket.depth.resync
+websocket.tradesalways
+
+safety
+	Program will refuse doing trades while this is set.
+fee
+	Fee rate in percent units (0-100).  (example: 0.6)
+fee.A.C
+	Fee rate for when giving A and receiving C, in percent units.
+fee.A.C.currency
+	Either A or C.  Which balance the fee is subtracted from.  The default
+	is MtGox-style (i.e. subtract from the money that you are receiving).
+	TradeHill-style is to subtract from the currency that is not BTC.
+
+
+COMMANDS
+========
+
+exit
+quit
+	Exits program.  Also, the usual Ctrl-D.
+
+config PROFILE
+	Switches the configuration profile at run-time to PROFILE.
+
+default A C
+	Switches the default currency pair to (A C).
+
+ticker [A [C]]
+	Basic ticker.  Only buy and sell price.
+
+alarm BMIN BMAX SMIN SMAX [INTERVAL_SEC [SUCCESS_COND [BEEPS]]]
+	Repeatedly poll for the current price every INTERVAL_SEC seconds and
+	beep if best bid price goes below BMIN (condition 1) or above BMAX
+	(condition 2) or best ask price goes below SMIN (condition 3) or above
+	SMAX (condition 4).
+
+	If the condition that triggered the beeps is equal to SUCCESS_COND, the
+	program will end with exit status 0.
+
+getdepth [raw]
+	Dumps the current order book data in JSON format.  The "raw" option is
+	only for MtGox and TradeHill and makes sure to return the exact same
+	data the server gives.
+
+d[epth] [v VOL] [n NUM] [A [C]]
+	Displays order book data for the default pair or for (A C).  "v" is how
+	far in the depth to display for both bids and asks (stops when the sum
+	of orders in A becomes larger than VOL and displays the last order).
+
+chart NAME [A [C]] FNOUT FNIN
+	Makes a chart according to configuration options chart.NAME and
+	chart.NAME.* .  "chart.NAME" option must be "PMIN PMAX PSTEP X YMAX",
+	where PMIN is price at left edge, PMAX is price at right edge and PSTEP
+	is the width of the bars in price units, YMAX is the y-range of the
+	chart in asset units.  X and anything following YMAX is ignored.
+
+trades [COUNT]
+	Shows the last COUNT trades or as many as the server returns, for
+	default pair.
+
+funds [A [C]]
+	Shows your balances for pair (A C) or the default pair.
+
+value [A [C]]
+	Shows the amount of A you would have if you gave all your C in exchange
+	for A at market prie and the amount of C you would have if you gave all
+	your A in exchange for C at market prices.
+
+orders
+	Shows your current orders.
+
+c[ancel] [all|ID]
+	Cancels either all orders or the order with the specified ID.
+
+calc {b|buy|s|sell} ...
+	Calculates the fees and rates you'd get if you bought at a particular
+	price (if price is specified) or if you bought at market.
+
+buy AMOUNT [ASSET] [at PRICE [CURRENCY]]
+sell AMOUNT [ASSET] [at PRICE [CURRENCY]]
+	Buy or sell at specified price.  If price is not specified, buys/sells
+	at market (executes multiple orders).
+
+
+PROBLEMS
+========
+You know where to find me.
