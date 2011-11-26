@@ -1,0 +1,3 @@
+Command-line Python-based trading application for trading Bitcoins for other
+currencies. Supports MtGox and TradeHill exchangers. It can generate simple
+charts.
