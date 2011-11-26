@@ -1,0 +1,878 @@
+#!/usr/bin/python
+#coding:utf8
+#
+# Copyright © 2011 stamit@stamit.gr 
+# To be distributed under the terms of the GNU General Public License version 3.
+#
+import sys
+import Trade
+from Trade import *
+
+def is_subset(a,b):
+	for x in a:
+		if not b.has_key(x):
+			return False
+	return True
+
+def set_addition(a,b):
+	for x in b:
+		if a.has_key(x):
+			a[x] += b[x]
+		else:
+			a[x] = b[x]
+def set_subtraction(a,b):
+	for x in b:
+		if a.has_key(x):
+			a[x] -= b[x]
+		else:
+			a[x] = -b[x]
+
+def cmd_config(ex, args):
+	global exch
+
+	if len(args)>2:
+		sys.stderr.write('only one argument allowed\n')
+		return 1
+	elif len(args)==2:
+		name = args[1]
+	elif exch==None:
+		sys.stderr.write('need to specify exchanger as first argument\n')
+		return 1
+	else:
+		name = exch.name
+
+	cfg = read_config(os.getenv('HOME')+'/.trade2')
+	if cfg.get(name)==None:
+		sys.stderr.write('unknown exchanger (no %s config section exists)\n'%name)
+		return 1
+
+	cname = cfg[name].get('class') or ''
+	try:
+		cls = getattr(Trade,cname+'Exchanger')
+	except Exception,x:
+		sys.stderr.write('no such exchanger class (%s)\n'%repr(cname))
+		return 1
+
+	if exch<>None: exch.close()
+	exch = cls(cfg,name)
+
+	return 0
+
+def cmd_default(exch, args):
+	if len(args)==1:
+		a,c=exch.getdefault()
+		print a,c
+	elif len(args)==3:
+		exch.setdefault(args[1],args[2])
+	else:
+		sys.stderr.write('default ASSET CURRENCY\n')
+		return 1
+
+def cmd_ticker(exch, args):
+	asset = None
+	currency = None
+
+	i = 1
+	while i<len(args):
+		if asset==None:
+			asset = args[i]
+			i += 1
+		elif currency==None:
+			currency = args[i]
+			i += 1
+		else:
+			raise SyntaxError('too many arguments')
+
+	asset,currency = exch.getdefault(asset,currency)
+
+	ticker = exch.ticker(asset,currency)
+	print 'BUYING  %s @ %s'%(asset.upper(),format_currency(ticker['buy'],currency,asset))
+	print 'SELLING %s @ %s'%(asset.upper(),format_currency(ticker['sell'],currency,asset))
+
+def beep():
+	sys.stdout.write('')
+	sys.stdout.flush()
+
+def beepy(seq):
+	if seq<>None:
+		beep()
+		for s in seq:
+			time.sleep(s)
+			beep()
+
+def beepy2(grp):
+	seq = []
+	for n,s in grp:
+		if n>0:
+			seq = seq + (n-1)*([s]+seq)
+		else:
+			seq = None
+	beepy(seq)
+
+def floatn(x):
+	try:
+		return float(x)
+	except Exception, x:
+		return None
+
+def cmd_alarm(exch, args):
+	if len(args)<5 or len(args)>8:
+		sys.stderr.write('BMIN BMAX SMIN SMAX [INTERVAL_SEC [SUCCESS_COND [BEEPS]]]\n')
+		return 1
+	buymin = floatn(args[1])
+	buymax = floatn(args[2])
+	sellmin = floatn(args[3])
+	sellmax = floatn(args[4])
+	interval = 10
+	success = None
+	beepreps = 10
+	try:
+		interval = float(args[5])
+		success = int(args[6])
+		beepreps = 1
+		beepreps = int(args[7])
+	except Exception, x:
+		pass
+
+	while True:
+		try:
+			ticker = exch.ticker()
+			buy = float(ticker['buy'])
+			sell = float(ticker['sell'])
+			print 'BUYING', buy, '- SELLING', sell
+			if buymin<>None and buy < buymin:
+				beepy2([(3,0.3),(beepreps,1)])
+				return not (success==1)
+			if buymax<>None and buymax < buy:
+				beepy2([(4,0.3),(beepreps,1)])
+				return not (success==2)
+			if sellmin<>None and sell < sellmin:
+				beepy2([(3,0.7),(beepreps,1)])
+				return not (success==3)
+			if sellmax<>None and sellmax < sell:
+				beepy2([(4,0.7),(beepreps,1)])
+				return not (success==4)
+			time.sleep(interval)
+		except Exception, x:
+			print 'ERROR', x
+
+def cmd_getdepth(exch, args):
+	if len(args)==1:
+		sys.stdout.write(json.dumps(exch.getdepth()))
+	elif args[1]=='raw':
+		sys.stdout.write(exch._q(exch._path('depth',exch.defcurrency)))
+	else:
+		sys.stderr.write('getdepth [raw]')
+		return 1
+
+def cmd_depth(exch, args):
+	asset = None
+	currency = None
+	count = None
+	vol = None
+
+	i = 1
+	while i < len(args):
+		if args[i]=='v':
+			vol = float(args[i+1])
+			i += 2
+		elif args[i]=='n':
+			count = int(args[i+1])
+			i += 2
+		elif asset==None:
+			asset = args[i]
+			i += 1
+		elif currency==None:
+			currency = args[i]
+			i += 1
+		else:
+			raise SyntaxError('unrecognized parameter (%s)'%args[i])
+
+	asset,currency = exch.getdefault(asset,currency)
+	if count==None and vol==None:
+		count = int(exch.config.get('depth.n') or 10)
+
+	bids,asks = exch.getdepth(count=count, vol=vol, asset=asset, currency=currency)
+
+	print
+	for bid in bids:
+		print 'BID %s @ %s    %s %s'%(
+			format_currency(bid[1],asset),
+			format_currency(bid[0],currency,asset),
+			format_currency(bid[2],asset,nosymbol=True),
+			format_currency(bid[3],currency,nosymbol=True),
+		)
+
+	print
+	for ask in asks:
+		print 'ASK %s @ %s    %s %s'%(
+			format_currency(ask[1],asset),
+			format_currency(ask[0],currency,asset),
+			format_currency(ask[2],asset,nosymbol=True),
+			format_currency(ask[3],currency,nosymbol=True),
+		)
+
+def frange(a,b,step):
+	x=[]
+	if step>0:
+		i = a
+		while i < b:
+			x.append(i)
+			i+=step
+	elif step<0:
+		i = b
+		while a < i:
+			x.append(i)
+			i+=step
+	else:
+		raise ValueError('frange() step argument must not be zero')
+	return x
+
+def make_chart_bars(bids,asks,pmin,pmax,pstep, incur=False):
+	price_steps = frange(pmin, pmax, pstep)
+	bidsb = len(price_steps)*[0.0]
+	asksb = len(price_steps)*[0.0]
+
+	for price,amount,btcs,usds in bids:
+		i = int((price-pmin)/pstep + 0.5)
+		if 0 <= i < len(price_steps):
+			if incur:
+				bidsb[i] += amount*price
+			else:
+				bidsb[i] += amount
+
+	for price,amount,btcs,usds in asks:
+		i = int((price-pmin)/pstep + 0.5)
+		if 0 <= i < len(price_steps):
+			if incur:
+				asksb[i] += amount*price
+			else:
+				asksb[i] += amount
+
+	return price_steps,bidsb,asksb
+
+def gaussian(x,c):
+	return exp(-(x/c)**2)
+
+def make_chart_curves(steps,bidasks,sigma,win,a,z):
+	volume = []
+	population = []
+	average = []
+	for p in steps:
+		wsum = 0.0
+		vsum = 0.0
+		for bidask in bidasks:
+			if abs(bidask[0]-p)<win:
+				w = gaussian(bidask[0]-p, sigma)
+				wsum += w
+				vsum += w*bidask[1]
+		sm = vsum/4
+		sm2 = 10*wsum
+		if a<=p<=z and wsum<>0 and vsum<>0:
+			sm1 = 10*vsum/wsum
+		else:
+			sm1 = None
+		volume.append(sm)
+		population.append(sm2)
+		average.append(sm1)
+	return (volume,population,average)
+
+def make_chart(bids,asks,pmin,pmax,pstep,ymax=None,sigma=None,tstep=1, fout=sys.stdout):
+	pylab.figure(figsize=(12,6))
+	pylab.xticks(frange(pmin,pmax,tstep), rotation=-90)
+	pylab.grid(True)
+
+	pylab.plot(map(lambda a:a[0], bids), map(lambda a:a[2]/10, bids), color='black', linewidth=1.75)
+	pylab.plot(map(lambda a:a[0], asks), map(lambda a:a[2]/10, asks), color='black', linewidth=1.75)
+
+	if sigma:
+		smoothed_steps = frange(pmin,pmax,pstep)
+		bestbid = bids[-1]
+		bestask = asks[0]
+		bid_vol,bid_pop,bid_avg = make_chart_curves(smoothed_steps,bids,sigma,4*sigma,pmin,bestbid[0])
+		ask_vol,ask_pop,ask_avg = make_chart_curves(smoothed_steps,asks,sigma,4*sigma,bestask[0],pmax)
+		pylab.plot(smoothed_steps, bid_vol, color='#FF00FF', linewidth=2)
+		pylab.plot(smoothed_steps, bid_pop, color='#008000', linewidth=2)
+		pylab.plot(smoothed_steps, bid_avg, color='#0000FF')
+		pylab.plot(smoothed_steps, ask_vol, color='#FF00FF', linewidth=2)
+		pylab.plot(smoothed_steps, ask_pop, color='#008000', linewidth=2)
+		pylab.plot(smoothed_steps, ask_avg, color='#FF0000')
+
+	prices,bidsb,asksb = make_chart_bars(bids,asks,pmin,pmax,pstep)
+	pylab.bar(prices,bidsb,pstep,color='#FF8000',edgecolor='#C05000')
+	pylab.bar(prices,asksb,pstep,bottom=bidsb,color='#0080FF',edgecolor='#0050C0')
+	pylab.xlim(pmin,pmax)
+	if ymax<>None:
+		pylab.ylim(0,ymax)
+	pylab.savefig(fout,dpi=(640/8))
+
+def chart_param(config,cname,param):
+	return ifnull(
+		config.get('chart.'+cname+'.'+param),
+		config.get('chart.default.'+param),
+	)
+
+def cmd_chart(exch, args):
+	asset = None
+	currency = None
+	cname = None
+	fnout = None
+	fnin = None
+
+	i = 1
+	while i < len(args):
+		if exch.config.get('chart.'+args[i])<>None:
+			cname = args[i]
+			i += 1
+		elif asset==None and args[i] in exch.currencies:
+			asset = args[i]
+			i += 1
+		elif currency==None and args[i] in exch.currencies:
+			currency = args[i]
+			i += 1
+		elif fnout==None:
+			fnout = args[i]
+			i += 1
+		elif fnin==None:
+			fnin = args[i]
+			i += 1
+		else:
+			sys.stderr.write('undefined chart\n')
+			return 1
+
+	asset,currency = exch.getdefault(asset,currency)
+	if cname==None:
+		cname = 'default'
+
+	if fnout==None or fnout=='':
+		fout = StringIO.StringIO()
+	elif fnout=='-':
+		fout = sys.stdout
+	else:
+		fout = open(fnout,'w')
+
+	if fnin==None:
+		bids,asks = exch.getdepth(asset=asset,currency=currency)
+	else:
+		if fnin=='-':
+			fin = sys.stdin
+		else:
+			fin = open(fnin,'r')
+
+		bids,asks = depth_data_process(json.loads(fin.read()))
+
+		if fnin<>'-':
+			fin.close()
+
+	params = exch.config['chart.'+cname].split()
+	pmin = float(params[0])
+	pmax = float(params[1])
+	pstep = float(params[2])
+
+	#if len(params) >= 4: ymin = float(params[3])
+	if len(params) >= 5: ymax = float(params[4])
+	#if len(params) >= 6: ystep = float(params[5])
+
+	#if len(params) >= 7: tmin = float(params[6])
+	#if len(params) >= 8: tmax = float(params[7])
+	#if len(params) >= 9: tstep = float(params[8])
+
+	#ymax = float(chart_param(exch.config,cname,'ymax'))
+	sigma = float(chart_param(exch.config,cname,'sigma'))
+	tstep = float(chart_param(exch.config,cname,'tstep'))
+	make_chart(bids,asks,pmin,pmax,pstep,ymax,sigma,tstep, fout=fout)
+
+	if fnout<>None and fnout<>'':
+		if fnout<>'-':
+			fout.close()
+	else:
+		s=fout.getvalue()
+		b=PythonMagick.Blob(s)
+		image=PythonMagick.Image(b)
+		image.display()
+
+def cmd_trades(exch, args):
+	if len(args)==2:
+		count = int(args[1])
+		date = None
+	elif len(args)==1:
+		count = None
+		date = None
+	else:
+		sys.stderr.write('trades [COUNT|ISODATE]\n')
+		return 1
+
+	a,c = exch.getdefault()
+
+	for trade in exch.trades(count,date):
+		print '%s %s @ %s'%(
+			utcdate(trade['date']),
+			format_currency(trade['amount'],a),
+			format_currency(trade['price'],c,a)
+		)
+
+#def cmd_history(exch, args):
+#	usdh,btch = exch.gethistory()
+#	print usdh
+#	print btch
+
+#def cmd_history(config, args):
+#	history = json.loads(sys.stdin.read())
+#	for r in history['aaData']:
+#		m = re.match('(\d\d)/(\d\d)/(\d\d) (\d\d):(\d\d)$',r[0])
+#		if not m:
+#			raise Exception('mtgox date format changed')
+#		dt = '20%s-%s-%sT%s:%s'%(
+#			m.group(3),
+#			m.group(1),
+#			m.group(2),
+#			m.group(4),
+#			m.group(5),
+#		)
+#
+#		tt=r[1]
+#		if tt=='Add BTC' or tt=='Add Funds' or tt=='Add LR':
+#			tt = 'DEPOSIT '
+#		elif tt=='Withdraw BTC' or tt=='Withdraw Funds':
+#			tt = 'WITHDRAW'
+#		elif tt=='Bought BTC':
+#			tt = 'BUY '
+#		elif tt=='Sold BTC':
+#			tt = 'SELL'
+#
+#		dbtc=float(r[3])
+#		dusd=float(r[4])
+#		if tt=='BUY ' or tt=='SELL':
+#			if abs(dbtc)>0:
+#				rate = round(abs(dusd)/abs(dbtc),2)
+#			else:
+#				rate = None
+#		else:
+#			rate = None
+#		if rate<>None:
+#			parenth = ' @ %s'%align_number(rate,2,2)
+#		else:
+#			parenth = ''
+#
+#		print '%s %s %s %s%s'%(dt, tt, align_number(dbtc,4,5), align_number(dusd,4,5), parenth)
+#		print r
+
+def cmd_funds(exch, args):
+	asset = None
+	currency = None
+
+	i = 1
+	while i < len(args):
+		if asset==None:
+			asset = args[i]
+			i += 1
+		elif currency==None:
+			currency = args[i]
+			i += 1
+		else:
+			raise SyntaxError('unrecognized parameter (%s)'%args[i])
+
+	asset,currency = exch.getdefault(asset,currency)
+	funds = exch.getfunds(asset,currency)
+	for cur in funds:
+		print cur.upper(), format_currency(funds[cur],cur, nosymbol=True)
+
+	ff = map(lambda x: x.lower(), (exch.config.get('fundsfields') or exch.config.get('default') or "").split())
+	if len(ff) and exch.config.get('fundsfile'):
+		amounts = map(lambda cur:str(funds[cur])+' '+cur.upper(), ff)
+
+		f=open(exch.config['fundsfile'],'a')
+		f.write('%s\t%s\n'%(
+			utcdate(),
+			'\t'.join(map(str,amounts))
+		))
+		f.close()
+
+def cmd_value(exch, args):
+	asset=None
+	currency=None
+	method='market'
+
+	i = 1
+	while i < len(args):
+		if args[i] in ['market','ticker']:
+			method=args[i]
+		elif asset==None:
+			asset = args[i]
+			i += 1
+		elif currency==None:
+			currency = args[i]
+			i += 1
+		else:
+			raise SyntaxError('unrecognized parameter (%s)'%args[i])
+
+	asset,currency = exch.getdefault(asset,currency)
+	funds = exch.getfunds(asset,currency)
+
+	if method=='market':
+		bids,asks = exch.getdepth(None,None,asset,currency)
+
+		so = sell_orders(bids,funds[asset],None,asset,currency)
+		sd,sf = sell_orders_deltas(so,asset,currency)
+		set_subtraction(sd,sf)
+
+		bo = buy_orders(asks,None,funds[currency],asset,currency)
+		bd,bf = buy_orders_deltas(bo,asset,currency)
+		set_subtraction(bd,bf)
+
+		values = {
+			currency:funds[currency]+(sd.get(currency) or 0),
+			asset:funds[asset]+(bd.get(asset) or 0),
+		}
+
+	elif method=='ticker':
+		ticker = exch.ticker(asset,currency)
+		values = {
+			currency:funds[currency]+funds[asset]*ticker['buy'],
+			asset:funds[asset]+funds[currency]/ticker['sell'],
+		}
+
+	print currency.upper(), format_currency(values[currency],currency,nosymbol=True)
+	print asset.upper(), format_currency(values[asset],asset,nosymbol=True)
+
+	vf = map(lambda x: x.lower(), (exch.config.get('valuefields') or exch.config.get('default') or "").split())
+	if len(vf) and exch.config.get('valuefile'):
+		amounts = map(lambda cur:str(values[cur])+' '+cur.upper(), vf)
+
+		f=open(exch.config['valuefile'],'a')
+		f.write('%s\t%s\n'%(
+			utcdate(),
+			'\t'.join(amounts)
+		))
+		f.close()
+
+def print_order(exch,order):
+	a,c = exch.getdefault()
+	print '%s %s %s @ %s'%(
+		str(order['id']),
+		{1:"ASK",2:"BID",-1:"A--",-2:"B--"}.get(order['type']) or '???',
+		format_currency(order['amount'],a),
+		format_currency(order['price'],c,a),
+	)
+
+def cmd_orders(exch, args):
+	for order in exch.getorders():
+		print_order(exch, order)
+
+def cmd_cancel(exch, args):
+	if len(args)<2:
+		sys.stderr.write('cancel ID\n')
+		sys.stderr.write('cancel all\n')
+		return 1
+
+	if args[1]=='all':
+		for order in exch.getorders():
+			print_order(exch, order)
+			exch.cancel(order['id'])
+
+	else:
+		exch.cancel(args[1])
+
+def print_fees(fees):
+	ss=[]
+	for cur in fees:
+		ss.append(format_currency(fees[cur],cur))
+	print 'Fees:', ', '.join(ss)
+
+def parse_order(exch, args):
+	if len(args)<1 or len(args)>5:
+		raise SyntaxError('AMOUNT [A] [at PRICE_PER_A [B]]')
+
+	asset = None
+	currency = None
+	try:
+		amount = float('%.8f'%float(args[0]))
+	except ValueError:
+		raise SyntaxError('AMOUNT [A] [at PRICE_PER_A [B]]')
+	price = None
+
+	if len(args)>=2:
+		if args[1]<>'at':
+			asset = args[1].lower()
+			atcl = args[2:]
+		else:
+			atcl = args[1:]
+
+		if len(atcl)>=2:
+			price = float(atcl[1])
+			if len(atcl)>3:
+				raise ValueError('too many arguments after "at"')
+			elif len(atcl)==3:
+				currency = atcl[2].lower()
+		elif len(atcl)==1:
+			raise ValueError('expecting price after "at"')
+		else:
+			price = None
+	else:
+		price = None
+
+	asset,currency = exch.getdefault(asset,currency)
+
+	if amount<=0.0:
+		raise ValueError('amount must be positive')
+	if price<>None and price<=0.0:
+		raise ValueError('price must be positive\n')
+
+	return amount,price,asset,currency
+
+def cmd_calc(exch, args):
+	if len(args)==1:
+		raise SyntaxError('calc {b|buy|s|sell} ...')
+	elif args[1]=='buy' or args[1]=='b':
+		return cmd_buy(exch, args[1:], calc=True)
+	elif args[1]=='sell' or args[1]=='s':
+		return cmd_sell(exch, args[1:], calc=True)
+	else:
+		raise SyntaxError('calc {b|buy|s|sell} ...')
+
+def buy_orders(asks,amount,camount,asset,currency):
+	orders = []
+	vol = 0.0
+	cvol = 0.0
+	for i in range(len(asks)):
+		oprice = asks[i][0]
+		oamount = asks[i][1]
+		ocamount = oprice*oamount
+
+		if amount<>None and (amount-vol)<oamount:
+			oamount = amount-vol
+		if camount<>None and (camount-cvol)<ocamount:
+			ocamount = camount-cvol
+			oamount = min(oamount, ocamount/oprice)
+
+		if oamount>0.0:
+			orders.append((oamount,oprice))
+
+		if amount<>None and (vol+asks[i][1]) >= amount:
+			break
+		if camount<>None and (cvol+oprice*asks[i][1] >= camount):
+			break
+
+		vol += oamount
+		cvol += ocamount
+	return orders
+
+def buy_orders_deltas(orders,asset,currency):
+	deltas = {}
+	fees = {}
+	for oamount,oprice in orders:
+		set_addition(deltas,{asset:oamount,currency:-oamount*oprice})
+		set_addition(fees, exch.buyfees(oamount,oprice,asset,currency))
+	return deltas,fees
+
+def cmd_buy(exch, args, calc=False):
+	amount,price,asset,currency = parse_order(exch,args[1:])
+
+	if not calc and exch.config.get('warning'):
+		yesno = raw_input(exch.config['warning'])
+		if yesno<>'yes':
+			sys.stdout.write('user regrets\n')
+			return 0
+
+	if price==None:
+		bids,asks = exch.getdepth(None,amount,asset,currency)
+		orders = buy_orders(asks,amount,None,asset,currency)
+		for oamount,oprice in orders:
+			print 'buy', format_currency(oamount,asset), \
+			      'at', format_currency(oprice,currency,asset)
+			if not calc:
+				print exch.buy(oamount,oprice,asset,currency)
+		deltas,fees = buy_orders_deltas(orders,asset,currency)
+	else:
+		if not calc:
+			print exch.buy(amount,price,asset,currency)
+
+		fees = exch.buyfees(amount,price,asset,currency)
+		deltas = {asset:amount, currency:-amount*price}
+
+	print 'Buy rate: ', format_currency(
+		abs(deltas[currency])/abs(deltas[asset]),
+		currency, asset,
+		nosymbol=True
+	)
+	set_subtraction(deltas,fees)
+	print_fees(fees)
+	print 'You give: ', format_currency(-deltas[currency],currency)
+	print 'You take: ', format_currency(deltas[asset],asset)
+	print 'Effective rate: ', format_currency(
+		abs(deltas[currency])/abs(deltas[asset]),
+		currency, asset,
+		nosymbol=True
+	)
+
+def sell_orders(bids,amount,camount,asset,currency):
+	orders = []
+	vol = 0.0
+	cvol = 0.0
+	for i in range(len(bids)):
+		oprice = bids[-1-i][0]
+		oamount = bids[-1-i][1]
+		ocamount = oprice*oamount
+
+		if amount<>None:
+			oamount = min(oamount, amount-vol)
+		if camount<>None:
+			ocamount = min(ocamount, camount-cvol)
+			oamount = min(oamount, ocamount/oprice)
+
+		if oamount>0.0:
+			orders.append((oamount,oprice))
+
+		if amount<>None and (vol+bids[-1-i][1]) >= amount:
+			break
+		if camount<>None and (cvol+oprice*bids[-1-i][1] >= camount):
+			break
+
+		vol += oamount
+		cvol += ocamount
+	return orders
+
+def sell_orders_deltas(orders,asset,currency):
+	deltas = {}
+	fees = {}
+	for oamount,oprice in orders:
+		set_addition(deltas,{asset:-oamount,currency:oamount*oprice})
+		set_addition(fees, exch.sellfees(oamount,oprice,asset,currency))
+	return deltas,fees
+
+def cmd_sell(exch, args, calc=False):
+	amount,price,asset,currency = parse_order(exch,args[1:])
+
+	if not calc and exch.config.get('warning'):
+		yesno = raw_input(exch.config['warning'])
+		if yesno<>'yes':
+			sys.stdout.write('user regrets\n')
+			return 0
+
+	if price==None:
+		bids,asks = exch.getdepth(None,amount,asset,currency)
+		orders = sell_orders(bids,amount,None,asset,currency)
+		for oamount,oprice in orders:
+			print 'sell', format_currency(oamount,asset), 'at', format_currency(oprice,currency,asset)
+			if not calc:
+				print exch.sell(oamount,oprice,asset,currency)
+		deltas,fees = sell_orders_deltas(orders,asset,currency)
+	else:
+		if not calc:
+			print exch.sell(amount,price,asset,currency)
+
+		fees = exch.sellfees(amount,price,asset,currency)
+		deltas = {asset:-amount, currency:amount*price}
+
+	print 'Sell rate: ', format_currency(
+		abs(deltas[currency])/abs(deltas[asset]),
+		currency, asset,
+		nosymbol=True
+	)
+	set_subtraction(deltas,fees)
+	print_fees(fees)
+	print 'You give: ', format_currency(-deltas[asset],asset)
+	print 'You take: ', format_currency(deltas[currency],currency)
+	print 'Effective rate: ', format_currency(
+		abs(deltas[currency])/abs(deltas[asset]),
+		currency, asset,
+		nosymbol=True
+	)
+
+def cmd_test(exch, args):
+	#print decimal_round(float(args[1]), int(args[2]))
+	print exch._ssl_query('/')
+
+commands = [
+	('config',cmd_config),
+	('default',cmd_default),
+	('ticker',cmd_ticker),
+	('alarm',cmd_alarm),
+	('getdepth',cmd_getdepth),
+	('d',cmd_depth),
+	('depth',cmd_depth),
+	('chart',cmd_chart),
+	('trades',cmd_trades),
+#	('history',cmd_history),
+	('funds',cmd_funds),
+	('value',cmd_value),
+	('orders',cmd_orders),
+	('c',cmd_cancel),
+	('cancel',cmd_cancel),
+	('calc',cmd_calc),
+	('buy',cmd_buy),
+	('sell',cmd_sell),
+	('test',cmd_test),
+]
+
+dispatch = {}
+for cmd in commands:
+	dispatch[cmd[0]] = cmd[1]
+
+def command(exch, args):
+	try:
+		if len(args)<1:
+			return 0
+
+		if args[0]=='help':
+			sys.stderr.write('\n'.join(dispatch.keys())+'\n')
+			return 1
+		elif dispatch.get(args[0])<>None:
+			# RUN IT
+			return dispatch[args[0]](exch, args)
+		else:
+			matches = []
+			for cmd in commands:
+				if cmd[0][:len(args[0])] == args[0]:
+					matches.append(cmd)
+
+			if len(matches)>1:
+				sys.stderr.write('ambiguous (%s)\n'%', '.join(map(lambda a:a[0], matches)))
+				return 1
+			elif len(matches)==1:
+				# RUN IT
+				return matches[0][1](exch, args)
+			else:
+				sys.stderr.write('unknown command\n')
+				return 1
+		return 0
+
+	except KeyboardInterrupt, x:
+		sys.stderr.write('interrupted command\n')
+		return -1
+	except SyntaxError, x:
+		sys.stderr.write(str(x)+'\n')
+		return -1
+
+if __name__=='__main__':
+	exch=None
+	if cmd_config(None,sys.argv[:2]):
+		sys.exit(1)
+
+	status = 0
+
+	try:
+		if len(sys.argv)==2:
+			while True:
+				try:
+					line = raw_input(exch.name+'> ')
+				except KeyboardInterrupt, x:
+					sys.stdout.write('exit\n')
+					status = 1
+					break
+				except EOFError, x:
+					sys.stdout.write('\n')
+					status = 1
+					break
+
+				args = line.split()
+				if args==['exit'] or args==['quit']:
+					break
+				status = command(exch, args)
+
+		else:
+			status = command(exch, sys.argv[2:])
+	finally:
+		exch.close()
+
+	sys.exit(status)
