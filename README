@@ -51,9 +51,7 @@ websocket.proxy.type
 
 websocket.initdelay
 	Delay in seconds before websocket thread attempts to connect (so we
-	avoid connects).
-
-
+	avoid connects when invoked with single command).
 websocket.depth.resync
 websocket.tradesalways
 
