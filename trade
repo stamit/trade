@@ -41,7 +41,7 @@ def cmd_config(ex, args):
 	else:
 		name = exch.name
 
-	cfg = read_config(os.getenv('HOME')+'/.trade2')
+	cfg = read_config(os.getenv('HOME')+'/.trade')
 	if cfg.get(name)==None:
 		sys.stderr.write('unknown exchanger (no %s config section exists)\n'%name)
 		return 1
