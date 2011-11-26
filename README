@@ -90,7 +90,7 @@ alarm BMIN BMAX SMIN SMAX [INTERVAL_SEC [SUCCESS_COND [BEEPS]]]
 	SMAX (condition 4).
 
 	If the condition that triggered the beeps is equal to SUCCESS_COND, the
-	program will end with exit status 0.
+	command (or program) will end with exit status 0.
 
 getdepth [raw]
 	Dumps the current order book data in JSON format.  The "raw" option is
