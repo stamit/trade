@@ -1,11 +1,11 @@
 Command-line Python-based trading application for trading Bitcoins for other
-currencies. Supports MtGox and TradeHill exchangers. It can generate simple
-charts.
+currencies.  Supports MtGox and TradeHill exchangers.  It can generate simple
+market depth charts.
 
-Config file is in INI-like format. There is a global section at the top,
-followed by configuration "profiles". Program is invoked with the profile name
-as the first argument. The configuration that is loaded is the global section,
-plus any additions/overrides in the profile section.
+Config file is $HOME/.trade and is in INI-like format. There is a global
+section at the top, followed by configuration "profiles".  Program is invoked
+with the profile name as the first argument. The configuration that is loaded
+is the global section, plus any additions/overrides in the profile section.
 
 If more command-line arguments are given, the program will execute them as a
 command and then exit, without prompting the user for anything.
@@ -110,6 +110,23 @@ chart NAME [A [C]] FNOUT FNIN
 	where PMIN is price at left edge, PMAX is price at right edge and PSTEP
 	is the width of the bars in price units, YMAX is the y-range of the
 	chart in asset units.  X and anything following YMAX is ignored.
+
+	chart.NAME.sigma is the standard deviation value for the smooth orders
+	plot.  Order book can be seen as a combination of deltas.  The "smooth
+	orders plot" is the convolution with a gaussian, to show the general
+	areas where there is concentration of bid/ask volume (purple) or number
+	of bid/ask orders (green).
+
+	chart.NAME.tstep is the tick interval in the price (horizontal) axis.
+
+	Chart parameters are chart.NAME.X, but if missing, they default to
+	chart.default.X .
+
+	FNOUT is the image output filename.  Output format is PNG.  If missing,
+	ImageMagick is used to display the image on the X screen.
+
+	FNIN is the order book input filename.  Input format is MtGox JSON
+	order book.  If missing, the server is queried.
 
 trades [COUNT]
 	Shows the last COUNT trades or as many as the server returns, for
