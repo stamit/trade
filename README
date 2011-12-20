@@ -10,8 +10,15 @@ is the global section, plus any additions/overrides in the profile section.
 If more command-line arguments are given, the program will execute them as a
 command and then exit, without prompting the user for anything.
 
-The dependencies for this program are the `python-openssl', `python-matplotlib' and 'python-pythonmagick' packages.
+The dependencies for this program are the `python-openssl', `python-numpy',
+`python-matplotlib' and 'python-pythonmagick' packages.
 
+See these URLs:
+
+	http://launchpad.net/pyopenssl/
+	http://numpy.scipy.org/
+	http://matplotlib.sf.net/
+	http://www.imagemagick.org/
 
 CONFIGURATION OPTIONS
 =====================
