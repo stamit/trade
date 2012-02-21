@@ -534,12 +534,12 @@ class MtGoxExchanger(Exchanger):
 		elif x['op']<>'private':
 			self._ws_log('OTHER', x)
 
-		elif x['private']=='oldticker':
-			self._ws_log('TICKER', '%g'%x['oldticker']['buy'], '%g'%x['oldticker']['sell'])
+		elif x['private']=='ticker':
+			self._ws_log('TICKER', '%g'%x['ticker']['buy'], '%g'%x['ticker']['sell'])
 
-			self._ws_market_set('btc','usd','oldticker',{
-				'buy':float(x['oldticker']['buy']),
-				'sell':float(x['oldticker']['sell']),
+			self._ws_market_set('btc','usd','ticker',{
+				'buy':float(x['ticker']['buy']),
+				'sell':float(x['ticker']['sell']),
 			})
 
 		elif x['private']=='trade':
