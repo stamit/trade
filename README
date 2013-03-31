@@ -44,7 +44,9 @@ port
 username
 password
 apitoken
-	Credentials to give to server.
+	Credentials to give to server.  This program uses MtGox's first API
+	(now deprecated), which takes "username" and "password".  "apitoken"
+	was for TradeHill.
 
 proxy.host
 proxy.port
