@@ -356,7 +356,7 @@ class MtGoxExchanger(Exchanger):
 	def __init__(self, cfg, name):
 		Exchanger.__init__(self,cfg,name)
 		if self.config.get('host')==None:
-			self.config['host'] = 'mtgox.com'
+			self.config['host'] = 'data.mtgox.com'
 		self.plainsocket = None
 		self.sslsocket = None
 		self.ssltimeout = None

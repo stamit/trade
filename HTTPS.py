@@ -102,7 +102,7 @@ def do_http_query(c, host, path, postdata=None, headers=None):
 	#
 	first = recv_line(c)
 	ff = first.split()
-	if len(ff)<2 or ff[1]<>'200':
+	if len(ff)<2 or ( ff[1]<>'200' and ff[1]<>'302' ):
 		raise Exception('server did not say 200 (%s)'%first)
 
 	repheaders = [first]
